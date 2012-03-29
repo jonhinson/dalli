@@ -290,10 +290,19 @@ module Dalli
 
     def deserialize(value, flags)
       value = Zlib::Inflate.inflate(value) if (flags & FLAG_COMPRESSED) != 0
-      value = Marshal.load(value) if (flags & FLAG_MARSHALLED) != 0
+      begin
+        value = Marshal.load(value) if (flags & FLAG_MARSHALLED) != 0      
+      rescue TypeError, ArgumentError
+        if $!.message =~ /undefined class\/module (.+)$/
+          Rails.logger.info $1
+          Rails.logger.info $!
+          Rails.logger.info value
+          require $1.underscore
+          retry
+        end
+        raise DalliError, "Unable to unmarshal value: #{$!.message}"
+      end
       value
-    rescue TypeError, ArgumentError
-      raise DalliError, "Unable to unmarshal value: #{$!.message}"
     rescue Zlib::Error
       raise DalliError, "Unable to uncompress value: #{$!.message}"
     end
